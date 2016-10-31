@@ -1,78 +1,69 @@
-using System.Collections;
-using System.Collections.Generic;
 using System.Net;
-using System.IO;
 using System;
+
 using System.Net.Http;
-using System.Text;
-using HtmlAgilityPack;
-using System.Linq;
-namespace BXWXSpyder
+namespace CSharpSpyder
 {
+    public interface LinkFilter
+    {
+        bool accept(string url);
+    }
     public class Spyder
     {
-        public List<Book> seeds;
-        public HttpClient client = new HttpClient();
-        public List<string> books = new List<string>();
 
         public Spyder()
         {
-            this.seeds = new List<Book>();
-        }
 
 
-        public void addBookUrl(string origin, string type, string name)
-        {
-            var book = new Book(origin, type, name);
-            this.seeds.Add(book);
         }
-        public void start()
+        /// <summary>
+        /// 初始化爬虫的配置
+        /// </summary>
+        public void init()
         {
-            this.seeds.ForEach(book =>
+
+
+        }
+
+        public void spyding(string[] seeds)
+        {
+            var filter = new Filter((url) =>
             {
-                this.downloadFile(book);
+                return url.StartsWith("http://www.baidu.com");
+
             });
-            // var book = this.seeds[0];
-            // downloadFile(book);
-        }
-
-        public async void downloadFile(Book book)
-        {
-            Console.WriteLine(book);
-            var response = await this.client.GetAsync(book.url);
-            if (response.IsSuccessStatusCode)
+            //初始化爬虫种子
+            this.initSeeds(seeds);
+            while ((!LinkQueue.getUnVisitedUrl().isEmpty()) && LinkQueue.visitedUrlNum < 1000)
             {
-                Console.WriteLine($"请求status是:{response.StatusCode},{response.ReasonPhrase}");
-                var resultBytes = response.Content.ReadAsByteArrayAsync().Result;
-                var gbk = Encoding.GetEncoding("GBK");
-                var result = gbk.GetString(resultBytes);
-                if (!Directory.Exists($"./dist/{book.type}"))
+                string visitUrl = LinkQueue.dequeueUnVisitedUrl();
+                Console.WriteLine($"开始爬取:{visitUrl}");
+                if (visitUrl == null)
                 {
-                    Directory.CreateDirectory($"./dist/{book.type}");
+                    Console.WriteLine("visitUrl为空,跳出当前循环");
+                    continue;
                 }
-                File.WriteAllText($"./dist/{book.type}/{book.code}.html", result, gbk);
+                new DownloadFile(visitUrl);
+                LinkQueue.addVisitedUrl(visitUrl);
+                var links = HtmlParser.extractLinks(visitUrl);
 
-            }
-            else
-            {
-                Console.WriteLine("请求错误");
+                Console.WriteLine($"抓取链接");
+                foreach (var link in links)
+                {
+                    var fixLink = link.StartsWith("//") ? "http:" + link : link;
+                    LinkQueue.addUnVisitedUrl(fixLink);
+                }
+
             }
         }
-
-        public void parseHtml(Book book)
+        public void initSeeds(string[] seeds)
         {
-            var doc = new HtmlDocument();
-            doc.LoadHtml(File.ReadAllText($"./dist/{book.type}/{book.code}.html", Encoding.GetEncoding("GBK")));
-            foreach (HtmlNode link in doc.DocumentNode.SelectNodes($"//*[@class=\"clearfix rec_rullist\"]/ul/li/a"))
+            foreach (var seed in seeds)
             {
-                HtmlAttribute attr = link.Attributes["href"];
-
-                Console.WriteLine(attr.Value);
-                this.books.Add(attr.Value);
-
+                LinkQueue.addUnVisitedUrl(seed);
             }
-
         }
+
     }
 
 }
